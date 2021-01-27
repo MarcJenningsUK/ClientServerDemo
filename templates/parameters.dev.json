@@ -1,0 +1,54 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "value": ""
+        },
+        "name": {
+            "value": "string"
+        },
+        "environment": {
+            "value": "dev"
+        },
+        "logAnalyticsResourceId": {
+            "value": "string"
+        },
+        "serverFarmSkuCode": {
+            "value": "S1"
+        },
+        "serverFarmWorkerQuantity": {
+            "value": 1
+        },
+        "apiManagementSku": {
+            "value": "Developer"
+        },
+        "apiManagementCapacity": {
+            "value": "1"
+        },
+        "apiManagementAdminEmail": {
+            "value": ""
+        },
+        "apiManagementOrganizationName": {
+            "value": ""
+        },
+        "mutualTlsCertificateBase64": {
+            "value": ""
+        },
+        "mutualTlsCertificatePassword": {
+            "value": ""
+        },
+        "mutualTlsCertificateThumbprint": {
+            "value": ""
+        },
+        "azureAdOpenIdConfigUrl": {
+            "value": ""
+        },
+        "azureAdAudience": {
+            "value": ""
+        },
+        "azureAdIssuer": {
+            "value": ""
+        }
+    }
+}

@@ -1,0 +1,318 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]"
+        },
+        "name": {
+            "type": "string"
+        },
+        "environment": {
+            "type": "string",
+            "allowedValues": [
+                "dev",
+                "test",
+                "prod"
+            ]
+        },
+        "logAnalyticsResourceId": {
+            "type": "string",
+            "metadata": {
+                "description": "Full resource Id of the Log Analytics workspace to which the Application Insights resource will be based."
+            }
+        },
+        "serverFarmSkuCode": {
+            "type": "string"
+        },
+        "serverFarmWorkerQuantity": {
+            "type": "int"
+        },
+        "apiManagementSku": {
+            "type": "string",
+            "allowedValues": [
+                "Developer",
+                "Standard",
+                "Premium",
+                "Basic",
+                "Consumption",
+                "Isolated"
+            ]
+        },
+        "apiManagementCapacity": {
+            "type": "string",
+            "defaultValue": "1"
+        },
+        "apiManagementAdminEmail": {
+            "type": "string"
+        },
+        "apiManagementOrganizationName": {
+            "type": "string"
+        },
+        "mutualTlsCertificateBase64": {
+            "type": "securestring",
+            "metadata": {
+                "description": "This value is output by running the ./scripts/New-MutualTlsCertificate.ps1 script."
+            }
+        },
+        "mutualTlsCertificatePassword": {
+            "type": "securestring",
+            "defaultValue": "1234abcd"
+        },
+        "mutualTlsCertificateThumbprint": {
+            "type": "securestring",
+            "metadata": {
+                "description": "This value is output by running the ./scripts/New-MutualTlsCertificate.ps1 script."
+            }
+        },
+        "azureAdOpenIdConfigUrl": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Should be in format: https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0/.well-known/openid-configuration"
+            }
+        },
+        "azureAdAudience": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Example: api://00000000-0000-0000-0000-000000000000"
+            }
+        },
+        "azureAdIssuer": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Should be in format: https://sts.windows.net/00000000-0000-0000-0000-000000000000/"
+            }
+        }
+    },
+    "functions": [],
+    "variables": {
+        "environmentalName": "[toLower(concat(parameters('name'), '-', parameters('environment')))]",
+        "appInsightsName": "[concat(variables('environmentalName'), '-insights')]",
+        "appInsightsResourceId": "[resourceId('microsoft.insights/components', variables('appInsightsName'))]",
+        "serverFarmName": "[concat(variables('environmentalName'), '-serverfarm')]",
+        "serverFarmResourceId": "[resourceId('Microsoft.Web/serverfarms', variables('serverFarmName'))]",
+        "apiAppName": "[concat(variables('environmentalName'), '-api-app')]",
+        "apiManagementName": "[concat(variables('environmentalName'), '-apim')]",
+        "apiManagementResourceId": "[resourceId('Microsoft.ApiManagement/service', variables('apiManagementName'))]",
+        "apiManagementLoggerResourceId": "[resourceId('Microsoft.ApiManagement/service/loggers', variables('apiManagementName'), variables('appInsightsName'))]",
+        "apiManagementApiCertificateName": "[concat(variables('apiManagementName'), '/', variables('apiAppName'))]",
+        "apiManagementApiCertificateResourceId": "[resourceId('Microsoft.ApiManagement/service/certificates', variables('apiManagementName'), variables('apiAppName'))]",
+        "apiManagementApiName": "[concat(variables('apiManagementName'), '/', variables('apiAppName'))]",
+        "apiManagementApiResourceId": "[resourceId('Microsoft.ApiManagement/service/apis', variables('apiManagementName'), variables('apiAppName'))]"
+    },
+    "resources": [
+        {
+            "type": "microsoft.insights/components",
+            "apiVersion": "2020-02-02-preview",
+            "name": "[variables('appInsightsName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[parameters('logAnalyticsResourceId')]"
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2020-09-01",
+            "name": "[variables('serverFarmName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "name": "[variables('serverFarmName')]",
+                "numberOfWorkers": "[parameters('serverFarmWorkerQuantity')]"
+            },
+            "sku": {
+                "Name": "[parameters('serverFarmSkuCode')]"
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2020-09-01",
+            "name": "[variables('apiAppName')]",
+            "location": "[parameters('location')]",
+            "kind": "api",
+            "dependsOn": [
+                "[variables('serverFarmResourceId')]",
+                "[variables('appInsightsResourceId')]"
+            ],
+            "properties": {
+                "name": "[variables('apiAppName')]",
+                "serverFarmId": "[variables('serverFarmResourceId')]",
+                "clientCertEnabled": true,
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                            "value": "[reference(variables('appInsightsResourceId'), '2020-02-02-preview').InstrumentationKey]"
+                        },
+                        {
+                            "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+                            "value": "~2"
+                        },
+                        {
+                            "name": "XDT_MicrosoftApplicationInsights_Mode",
+                            "value": "default"
+                        },
+                        {
+                            "name": "XDT_MicrosoftApplicationInsights_PreemptSdk",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "DiagnosticServices_EXTENSION_VERSION",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "APPINSIGHTS_PROFILERFEATURE_VERSION",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "APPINSIGHTS_SNAPSHOTFEATURE_VERSION",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "InstrumentationEngine_EXTENSION_VERSION",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "SnapshotDebugger_EXTENSION_VERSION",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "XDT_MicrosoftApplicationInsights_BaseExtensions",
+                            "value": "disabled"
+                        },
+                        {
+                            "name": "CertHeader",
+                            "value": "X-ARR-ClientCert"
+                        },
+                        {
+                            "name": "Thumbprint",
+                            "value": "[parameters('mutualTlsCertificateThumbprint')]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "2020-06-01-preview",
+            "name": "[variables('apiManagementName')]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "[parameters('apiManagementSku')]",
+                "capacity": "[parameters('apiManagementCapacity')]"
+            },
+            "properties": {
+                "publisherEmail": "[parameters('apiManagementAdminEmail')]",
+                "publisherName": "[parameters('apiManagementOrganizationName')]",
+                "customProperties": {
+                    "Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2": true
+                }
+            },
+            "resources": [
+                {
+                    "type": "loggers",
+                    "apiVersion": "2020-06-01-preview",
+                    "name": "[variables('appInsightsName')]",
+                    "dependsOn": [
+                        "[variables('apiManagementResourceId')]"
+                    ],
+                    "properties": {
+                        "loggerType": "applicationInsights",
+                        "resourceId": "[variables('appInsightsResourceId')]",
+                        "credentials": {
+                            "instrumentationKey": "[reference(variables('appInsightsResourceId'), '2020-02-02-preview').InstrumentationKey]"
+                        }
+                    }
+                },
+                {
+                    "type": "diagnostics",
+                    "apiVersion": "2020-06-01-preview",
+                    "name": "applicationinsights",
+                    "dependsOn": [
+                        "[variables('apiManagementResourceId')]",
+                        "[variables('apiManagementLoggerResourceId')]"
+                    ],
+                    "properties": {
+                        "loggerId": "[variables('apiManagementLoggerResourceId')]",
+                        "alwaysLog": "allErrors",
+                        "sampling": {
+                            "percentage": 100,
+                            "samplingType": "fixed"
+                        }
+                    }
+                },
+                {
+                    "type": "policies",
+                    "apiVersion": "2020-06-01-preview",
+                    "name": "policy",
+                    "dependsOn": [
+                        "[variables('apiManagementResourceId')]"
+                    ],
+                    "properties": {
+                        "value": "[format('<!--\r\n    IMPORTANT:\r\n    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.\r\n    - Only the <forward-request> policy element can appear within the <backend> section element.\r\n    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.\r\n    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.\r\n    - To add a policy position the cursor at the desired insertion point and click on the round button associated with the policy.\r\n    - To remove a policy, delete the corresponding policy statement from the policy document.\r\n    - Policies are applied in the order of their appearance, from the top down.\r\n-->\r\n<policies>\r\n  <inbound>\r\n    <validate-jwt header-name=\"Authorization\" failed-validation-httpcode=\"401\" require-expiration-time=\"true\" require-scheme=\"Bearer\" require-signed-tokens=\"true\">\r\n      <openid-config url=\"{0}\" />\r\n      <audiences>\r\n        <audience>{1}</audience>\r\n      </audiences>\r\n      <issuers>\r\n        <issuer>{2}</issuer>\r\n      </issuers>\r\n    </validate-jwt>\r\n  </inbound>\r\n  <backend>\r\n    <forward-request />\r\n  </backend>\r\n  <outbound />\r\n  <on-error />\r\n</policies>', parameters('azureAdOpenIdConfigUrl'), parameters('azureAdAudience'), parameters('azureAdIssuer'))]",
+                        "format": "xml"
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/certificates",
+            "apiVersion": "2020-06-01-preview",
+            "name": "[variables('apiManagementApiCertificateName')]",
+            "dependsOn": [
+                "[variables('apiManagementResourceId')]"
+            ],
+            "properties": {
+                "data": "[parameters('mutualTlsCertificateBase64')]",
+                "password": "[parameters('mutualTlsCertificatePassword')]"
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/apis",
+            "apiVersion": "2020-06-01-preview",
+            "name": "[variables('apiManagementApiName')]",
+            "dependsOn": [
+                "[variables('apiManagementResourceId')]"
+            ],
+            "properties": {
+                "displayName": "[variables('apiAppName')]",
+                "apiRevision": "1",
+                "subscriptionRequired": false,
+                "path": "api1",
+                "protocols": [
+                    "https"
+                ]
+            },
+            "resources": [
+                {
+                    "type": "operations",
+                    "apiVersion": "2020-06-01-preview",
+                    "name": "get-weatherforecast",
+                    "dependsOn": [
+                        "[variables('apiManagementApiResourceId')]"
+                    ],
+                    "properties": {
+                        "displayName": "/WeatherForecast - GET",
+                        "method": "GET",
+                        "urlTemplate": "/WeatherForecast",
+                        "templateParameters": []
+                    }
+                },
+                {
+                    "type": "policies",
+                    "apiVersion": "2020-06-01-preview",
+                    "name": "policy",
+                    "dependsOn": [
+                        "[variables('apiManagementApiResourceId')]",
+                        "[variables('apiManagementApiCertificateResourceId')]"
+                    ],
+                    "properties": {
+                        "value": "[format('<!--\r\n    IMPORTANT:\r\n    - Policy elements can appear only within the <inbound>, <outbound>, <backend> section elements.\r\n    - To apply a policy to the incoming request (before it is forwarded to the backend service), place a corresponding policy element within the <inbound> section element.\r\n    - To apply a policy to the outgoing response (before it is sent back to the caller), place a corresponding policy element within the <outbound> section element.\r\n    - To add a policy, place the cursor at the desired insertion point and select a policy from the sidebar.\r\n    - To remove a policy, delete the corresponding policy statement from the policy document.\r\n    - Position the <base> element within a section element to inherit all policies from the corresponding section element in the enclosing scope.\r\n    - Remove the <base> element to prevent inheriting policies from the corresponding section element in the enclosing scope.\r\n    - Policies are applied in the order of their appearance, from the top down.\r\n    - Comments within policy elements are not supported and may disappear. Place your comments between policy elements or at a higher level scope.\r\n-->\r\n<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-backend-service base-url=\"https://{0}.azurewebsites.net\" />\r\n    <authentication-certificate thumbprint=\"{1}\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>', variables('apiAppName'), parameters('mutualTlsCertificateThumbprint'))]",
+                        "format": "xml"
+                    }
+                }
+            ]
+        }
+    ]
+}
